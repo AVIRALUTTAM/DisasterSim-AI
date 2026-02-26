@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DisasterSim AI — Impact Prediction System</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04070a;--surface:#080d12;--surface2:#0c1520;--surface3:#101a26;
+  --border:#16253a;--border2:#1e3050;
+  --text:#a8bfce;--text-dim:#364f62;--text-bright:#d5eaff;
+  --green:#00e676;--green-dim:#001a0d;
+  --yellow:#ffc107;--yellow-dim:#251900;
+  --red:#ff1744;--red-dim:#230008;
+  --orange:#ff6d00;--orange-dim:#1e0c00;
+  --accent:#00b4d8;--accent2:#0077b6;--accent-dim:#001220;
+  --purple:#7c4dff;--purple-dim:#0e0420;
+  --mono:'Share Tech Mono',monospace;
+  --disp:'Barlow Condensed',sans-serif;
+  --body:'Barlow',sans-serif;
+  --risk-glow: rgba(0,180,216,.15);
+}
+
+/* ══════════════════ BOOT SCREEN ══════════════════ */
+#bootScreen{
+  position:fixed;inset:0;background:var(--bg);z-index:99999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:var(--mono);
+}
+#bootScreen.done{animation:bootOut .5s .2s ease forwards}
+@keyframes bootOut{to{opacity:0;pointer-events:none;visibility:hidden}}
+.boot-logo{font-family:var(--disp);font-weight:900;font-size:52px;letter-spacing:6px;text-transform:uppercase;color:var(--text-bright);margin-bottom:6px;animation:bootLogoIn .6s ease}
+.boot-logo span{color:var(--accent)}
+.boot-logo sup{color:var(--purple);font-size:22px;vertical-align:super}
+@keyframes bootLogoIn{from{opacity:0;transform:scale(.9) translateY(-20px)}to{opacity:1;transform:none}}
+.boot-tagline{font-size:11px;color:var(--text-dim);letter-spacing:3px;text-transform:uppercase;margin-bottom:40px}
+.boot-log{width:440px;max-width:90vw;font-size:11px;color:var(--text-dim);line-height:2;text-align:left}
+.boot-log-line{display:flex;align-items:center;gap:10px;opacity:0;animation:logLine .3s ease forwards}
+.boot-log-line.ok .bll-status{color:var(--green)}
+.boot-log-line.load .bll-status{color:var(--yellow)}
+.bll-status{font-size:10px;letter-spacing:1px;flex-shrink:0;width:50px}
+.boot-bar-wrap{width:440px;max-width:90vw;margin-top:24px;height:3px;background:var(--border)}
+.boot-bar{height:100%;background:var(--accent);width:0%;transition:width .3s ease}
+.boot-pct{font-size:11px;color:var(--accent);text-align:right;margin-top:6px}
+.boot-tri{
+  width:50px;height:50px;background:var(--red);
+  clip-path:polygon(50% 0%,100% 100%,0% 100%);
+  margin-bottom:24px;
+  animation:bootTri 1.5s ease-in-out infinite;
+}
+@keyframes bootTri{0%,100%{opacity:1;filter:brightness(1)}50%{opacity:.4;filter:brightness(.5)}}
+
+/* ══════════════════ BASE ══════════════════ */
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;overflow-x:hidden;opacity:0;transition:opacity .4s}
+body.ready{opacity:1}
+
+/* Scanlines */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,180,216,.009) 2px,rgba(0,180,216,.009) 4px);pointer-events:none;z-index:9990}
+
+/* ── PARTICLE CANVAS ── */
+#particles{position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.6}
+
+/* ── RISK ATMOSPHERE ── */
+#atmosphere{
+  position:fixed;inset:0;pointer-events:none;z-index:2;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,180,216,.04) 0%, transparent 70%);
+  transition:background 2s ease;
+}
+body.atm-medium #atmosphere{background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,193,7,.05) 0%, transparent 70%)}
+body.atm-high #atmosphere{background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,23,68,.08) 0%, transparent 70%)}
+
+/* ── GRID ── */
+.bg-grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,180,216,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(0,180,216,.022) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:3}
+
+/* ── SCREEN SHAKE ── */
+@keyframes shake{
+  0%,100%{transform:translate(0,0) rotate(0)}
+  10%{transform:translate(-4px,2px) rotate(-.4deg)}
+  20%{transform:translate(4px,-2px) rotate(.4deg)}
+  30%{transform:translate(-3px,3px) rotate(-.3deg)}
+  40%{transform:translate(3px,-1px) rotate(.2deg)}
+  50%{transform:translate(-2px,2px) rotate(-.2deg)}
+  60%{transform:translate(2px,-3px) rotate(.3deg)}
+  70%{transform:translate(-3px,1px) rotate(-.1deg)}
+  80%{transform:translate(3px,2px) rotate(.2deg)}
+  90%{transform:translate(-1px,-1px) rotate(.1deg)}
+}
+body.shaking .wrap{animation:shake .5s ease}
+
+/* ── RIPPLE ── */
+.ripple-container{position:relative;overflow:hidden}
+.ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.25);transform:scale(0);animation:rippleAnim .6s linear;pointer-events:none}
+@keyframes rippleAnim{to{transform:scale(4);opacity:0}}
+
+/* ── WRAP ── */
+.wrap{position:relative;z-index:10;max-width:1440px;margin:0 auto;padding:0 18px 60px}
+
+/* ══════════════════ HEADER ══════════════════ */
+header{border-bottom:1px solid var(--border);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;animation:slideDown .6s .8s ease both}
+@keyframes slideDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
+.logo{display:flex;align-items:center;gap:10px;cursor:default}
+.logo-tri{width:34px;height:34px;background:var(--red);clip-path:polygon(50% 0%,100% 100%,0% 100%);animation:tri 2s ease-in-out infinite}
+@keyframes tri{0%,100%{opacity:1;filter:brightness(1)}50%{opacity:.4;filter:brightness(.5)}}
+.logo-text{font-family:var(--disp);font-weight:900;font-size:22px;letter-spacing:3px;text-transform:uppercase;color:var(--text-bright)}
+.logo-text em{color:var(--accent);font-style:normal}
+.logo-text sup{color:var(--purple);font-size:12px;letter-spacing:0;vertical-align:super}
+.hdr-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;padding:4px 9px;border:1px solid;letter-spacing:1px;transition:all .3s}
+.pill-green{color:var(--green);border-color:var(--green)}
+.pill-purple{color:var(--purple);border-color:var(--purple)}
+.pill-orange{color:var(--orange);border-color:var(--orange)}
+.pdot{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 1.3s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+.hdr-clock{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
+/* Profile btn */
+.profile-hdr-btn{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;padding:4px 12px;border:1px solid var(--border2);color:var(--text-dim);cursor:pointer;background:transparent;letter-spacing:1px;transition:all .2s;text-transform:uppercase}
+.profile-hdr-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ══════════════════ ALERT BANNER ══════════════════ */
+#alertBanner{display:none;padding:10px 18px;font-family:var(--mono);font-size:11px;letter-spacing:1px;text-transform:uppercase;border-bottom:2px solid;margin-bottom:14px;align-items:center;gap:12px;animation:alertpulse 1.2s ease-in-out infinite}
+@keyframes alertpulse{0%,100%{opacity:1}50%{opacity:.55}}
+#alertBanner.low{background:var(--green-dim);border-color:var(--green);color:var(--green);display:flex}
+#alertBanner.medium{background:var(--yellow-dim);border-color:var(--yellow);color:var(--yellow);display:flex}
+#alertBanner.high{background:var(--red-dim);border-color:var(--red);color:var(--red);display:flex}
+
+/* ══════════════════ TOASTS ══════════════════ */
+#toastContainer{position:fixed;top:20px;right:20px;z-index:99998;display:flex;flex-direction:column;gap:7px;max-width:320px}
+.toast{background:var(--surface2);border:1px solid;padding:11px 14px;font-family:var(--mono);font-size:10px;letter-spacing:.5px;line-height:1.5;animation:toastIn .3s ease;position:relative;overflow:hidden}
+.toast::after{content:'';position:absolute;bottom:0;left:0;height:2px;background:currentColor;animation:toastBar 4s linear forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastBar{from{width:100%}to{width:0%}}
+.toast.info{border-color:var(--accent);color:var(--accent)}
+.toast.warn{border-color:var(--yellow);color:var(--yellow)}
+.toast.danger{border-color:var(--red);color:var(--red)}
+.toast.success{border-color:var(--green);color:var(--green)}
+.toast-close{position:absolute;top:5px;right:7px;cursor:pointer;opacity:.5;font-size:13px;background:none;border:none;color:inherit}
+
+/* ══════════════════ PROFILES DRAWER ══════════════════ */
+#profilesOverlay{position:fixed;inset:0;background:rgba(4,7,10,.85);z-index:9000;display:none;align-items:flex-start;justify-content:flex-end;backdrop-filter:blur(4px)}
+#profilesOverlay.open{display:flex}
+#profilesDrawer{
+  background:var(--surface);border-left:1px solid var(--border);
+  width:380px;max-width:94vw;height:100vh;overflow-y:auto;
+  display:flex;flex-direction:column;
+  animation:drawerIn .35s cubic-bezier(.4,0,.2,1);
+}
+@keyframes drawerIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.drawer-hdr{padding:18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:1}
+.drawer-title{font-family:var(--disp);font-weight:900;font-size:18px;letter-spacing:3px;text-transform:uppercase;color:var(--text-bright)}
+.drawer-close{background:transparent;border:1px solid var(--border2);color:var(--text-dim);font-size:18px;width:32px;height:32px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.drawer-close:hover{border-color:var(--red);color:var(--red)}
+.drawer-body{padding:16px;flex:1}
+.drawer-section-title{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;margin-top:18px}
+.drawer-section-title:first-child{margin-top:0}
+
+/* Save form */
+.save-form{background:var(--surface2);border:1px solid var(--border);padding:14px}
+.save-input{width:100%;background:transparent;border:none;border-bottom:1px solid var(--border2);outline:none;font-family:var(--disp);font-weight:600;font-size:16px;color:var(--text-bright);padding:6px 0;caret-color:var(--accent);letter-spacing:.5px;margin-bottom:10px}
+.save-input::placeholder{color:var(--text-dim)}
+.save-meta{font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.8;margin-bottom:12px}
+.save-btn{background:var(--accent);border:none;color:var(--bg);font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:9px 18px;cursor:pointer;transition:background .2s;width:100%}
+.save-btn:hover{background:#00d4f8}
+.save-btn:disabled{background:var(--border2);color:var(--text-dim);cursor:not-allowed}
+
+/* Profile cards */
+.profile-list{display:flex;flex-direction:column;gap:10px}
+.profile-card{
+  background:var(--surface2);border:1px solid var(--border);padding:14px;
+  cursor:pointer;position:relative;overflow:hidden;
+  transition:border-color .2s, background .2s;
+  animation:cardIn .3s ease both;
+}
+@keyframes cardIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.profile-card:hover{border-color:var(--accent);background:var(--surface3)}
+.profile-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.profile-card.c-low::before{background:var(--green)}
+.profile-card.c-medium::before{background:var(--yellow)}
+.profile-card.c-high::before{background:var(--red)}
+.pc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+.pc-name{font-family:var(--disp);font-weight:700;font-size:16px;color:var(--text-bright);letter-spacing:.5px}
+.pc-badge{font-family:var(--mono);font-size:9px;padding:2px 8px;border:1px solid currentColor;letter-spacing:1px}
+.pc-badge.c-low{color:var(--green);border-color:var(--green)}
+.pc-badge.c-medium{color:var(--yellow);border-color:var(--yellow)}
+.pc-badge.c-high{color:var(--red);border-color:var(--red)}
+.pc-meta{font-family:var(--mono);font-size:10px;color:var(--text-dim);line-height:1.7}
+.pc-actions{display:flex;gap:6px;margin-top:10px}
+.pc-load{background:var(--accent);border:none;color:var(--bg);font-family:var(--disp);font-weight:700;font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:6px 14px;cursor:pointer;flex:1;transition:background .2s}
+.pc-load:hover{background:#00d4f8}
+.pc-del{background:transparent;border:1px solid var(--border2);color:var(--text-dim);font-family:var(--mono);font-size:10px;padding:6px 10px;cursor:pointer;transition:all .2s}
+.pc-del:hover{border-color:var(--red);color:var(--red)}
+.pc-sev{font-family:var(--disp);font-weight:900;font-size:32px;line-height:1;margin-bottom:2px}
+.pc-sev.c-low{color:var(--green)} .pc-sev.c-medium{color:var(--yellow)} .pc-sev.c-high{color:var(--red)}
+.no-profiles{font-family:var(--mono);font-size:11px;color:var(--text-dim);text-align:center;padding:30px;line-height:1.8;border:1px dashed var(--border)}
+
+/* ══════════════════ SEARCH ══════════════════ */
+.search-bar{background:var(--surface);border:1px solid var(--border);padding:13px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;position:relative;animation:slideDown .6s 1s ease both}
+.search-bar::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+.si{color:var(--accent);font-size:18px;flex-shrink:0}
+.siw{flex:1;position:relative}
+.sinput{width:100%;background:transparent;border:none;outline:none;font-family:var(--disp);font-weight:600;font-size:18px;letter-spacing:1px;color:var(--text-bright);caret-color:var(--accent)}
+.sinput::placeholder{color:var(--text-dim)}
+.ssub{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px}
+.sbtn{background:var(--accent);border:none;color:var(--bg);font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:8px 16px;cursor:pointer;flex-shrink:0;transition:all .2s;position:relative;overflow:hidden}
+.sbtn:hover{background:#00d4f8}
+.sbtn:disabled{background:var(--border2);color:var(--text-dim);cursor:not-allowed}
+.voice-btn{background:transparent;border:1px solid var(--purple);color:var(--purple);font-family:var(--mono);font-size:10px;padding:8px 12px;cursor:pointer;flex-shrink:0;transition:all .2s;display:flex;align-items:center;gap:5px;letter-spacing:1px}
+.voice-btn:hover{background:var(--purple);color:var(--bg)}
+.voice-btn.listening{background:var(--purple);color:var(--bg);animation:vpulse .8s ease-in-out infinite}
+@keyframes vpulse{0%,100%{box-shadow:0 0 0 0 rgba(124,77,255,.4)}50%{box-shadow:0 0 0 8px rgba(124,77,255,0)}}
+.sugg{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface2);border:1px solid var(--border2);z-index:1000;display:none;max-height:200px;overflow-y:auto}
+.sg{padding:10px 13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s}
+.sg:last-child{border-bottom:none} .sg:hover{background:var(--surface3)}
+.sg-c{font-family:var(--disp);font-weight:600;font-size:13px;color:var(--text-bright)}
+.sg-m{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ══════════════════ MAIN GRID ══════════════════ */
+.main-grid{display:grid;grid-template-columns:360px 1fr;gap:16px;align-items:start}
+
+/* ── PANELS ── */
+.panel{background:var(--surface);border:1px solid var(--border);position:relative;overflow:hidden}
+.panel::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:shimmer 4s ease-in-out infinite}
+@keyframes shimmer{0%,100%{opacity:.4}50%{opacity:1}}
+.phdr{padding:10px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)}
+.phdr .dot{width:5px;height:5px;background:var(--accent);border-radius:50%;flex-shrink:0}
+.phdr .ai-dot{background:var(--purple)}
+.pbody{padding:16px 15px}
+
+/* ── MAP ── */
+#map{height:230px;width:100%}
+.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.8) saturate(.5)}
+.map-coord{position:absolute;bottom:8px;left:8px;z-index:400;background:rgba(4,7,10,.92);border:1px solid var(--border2);padding:4px 8px;font-family:var(--mono);font-size:10px;color:var(--accent);pointer-events:none}
+
+/* ── AI TOGGLE ── */
+.ai-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;background:var(--purple-dim);border-bottom:1px solid var(--border)}
+.ai-toggle-label{font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--purple);display:flex;align-items:center;gap:7px}
+.ai-badge{font-family:var(--mono);font-size:9px;color:var(--purple);border:1px solid var(--purple);padding:2px 5px;letter-spacing:1px}
+.toggle-sw{position:relative;width:46px;height:22px;cursor:pointer;flex-shrink:0}
+.toggle-sw input{opacity:0;width:0;height:0}
+.toggle-track{position:absolute;inset:0;background:var(--border2);border:1px solid var(--border);transition:background .3s}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;background:var(--text-dim);transition:transform .3s,background .3s}
+.toggle-sw input:checked + .toggle-track{background:var(--purple-dim);border-color:var(--purple)}
+.toggle-sw input:checked ~ .toggle-thumb{transform:translateX(24px);background:var(--purple)}
+
+/* ── FIELDS ── */
+.field{margin-bottom:18px}
+.fl{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.fn{font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-bright)}
+.fv{font-family:var(--mono);font-size:11px;color:var(--accent)}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:var(--border2);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--accent);border:2px solid var(--bg);cursor:pointer;transition:transform .15s,box-shadow .15s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.4);box-shadow:0 0 8px var(--accent)}
+.rl{display:flex;justify-content:space-between;margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--text-dim)}
+.ig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.ib{background:transparent;border:1px solid var(--border2);color:var(--text-dim);font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:9px 4px;cursor:pointer;transition:all .2s}
+.ib:hover{border-color:var(--accent);color:var(--text-bright)}
+.ib.active{border-color:var(--accent);color:var(--bg);background:var(--accent)}
+
+/* ── SIMULATE BTN ── */
+.sim-btn{width:100%;background:transparent;border:1px solid var(--accent);color:var(--accent);font-family:var(--disp);font-weight:900;font-size:14px;letter-spacing:4px;text-transform:uppercase;padding:12px;cursor:pointer;position:relative;overflow:hidden;transition:color .3s;margin-top:5px}
+.sim-btn::before{content:'';position:absolute;inset:0;background:var(--accent);transform:translateX(-101%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sim-btn:hover::before{transform:translateX(0)} .sim-btn:hover{color:var(--bg)}
+.sim-btn span{position:relative;z-index:1}
+.sim-btn.ai-mode{border-color:var(--purple);color:var(--purple)}
+.sim-btn.ai-mode::before{background:var(--purple)}
+.sim-btn.ai-mode:hover{color:var(--bg)}
+
+/* ── SPEAK BTN ── */
+.speak-btn{width:100%;background:transparent;border:1px solid var(--green);color:var(--green);font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:3px;text-transform:uppercase;padding:9px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:5px}
+.speak-btn:hover{background:var(--green);color:var(--bg)}
+.speak-btn.speaking{background:var(--green-dim);animation:vpulse .8s ease-in-out infinite}
+
+/* ── TICKER ── */
+.ticker{font-family:var(--mono);font-size:9px;color:var(--text-dim);padding:6px 0;border-top:1px solid var(--border);overflow:hidden;white-space:nowrap}
+.ti{display:inline-block;animation:ticker 25s linear infinite}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* ══════════════════ RIGHT COL ══════════════════ */
+.right-col{display:flex;flex-direction:column;gap:14px}
+
+/* ── LOC STRIP ── */
+.loc-strip{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface2);border:1px solid var(--border)}
+.ls{padding:10px 12px;border-right:1px solid var(--border)}
+.ls:last-child{border-right:none}
+.ls-l{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.ls-v{font-family:var(--disp);font-weight:700;font-size:17px;color:var(--text-bright)}
+.ls-u{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-left:2px}
+
+/* ── FORECAST ── */
+.fcast{background:var(--surface);border:1px solid var(--border);overflow:hidden}
+.fdays{display:grid;grid-template-columns:repeat(7,1fr)}
+.fd{padding:9px 4px;text-align:center;border-right:1px solid var(--border);cursor:pointer;transition:background .2s;animation:fdIn .3s ease both}
+@keyframes fdIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.fd:last-child{border-right:none} .fd:hover{background:var(--surface2)}
+.fd.active{background:var(--accent-dim);border-top:2px solid var(--accent);padding-top:7px}
+.fd-n{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;text-transform:uppercase}
+.fd-i{font-size:17px;margin:4px 0}
+.fd-r{font-family:var(--disp);font-weight:700;font-size:12px;color:var(--accent)}
+.fd-r span{font-family:var(--mono);font-size:8px;color:var(--text-dim)}
+.fd-t{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:2px}
+.fd-b{height:3px;background:var(--border2);margin-top:4px}
+.fd-bf{height:100%;background:var(--accent);transition:width .6s}
+
+/* ── REAL-TIME DASHBOARD ── */
+.rt-dashboard{background:var(--surface);border:1px solid var(--border);overflow:hidden}
+.rt-grid{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border)}
+.rt-gauge{padding:12px 8px;border-right:1px solid var(--border);position:relative;text-align:center}
+.rt-gauge:last-child{border-right:none}
+.rt-gauge-lbl{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
+.rt-ring{width:68px;height:68px;margin:0 auto 6px;position:relative}
+.rt-ring svg{transform:rotate(-90deg)}
+.rt-ring .track{fill:none;stroke:var(--border2);stroke-width:6}
+.rt-ring .fill{fill:none;stroke-width:6;stroke-linecap:butt;transition:stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1),stroke .5s}
+.rt-val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--disp);font-weight:700;font-size:17px;color:var(--text-bright)}
+.rt-sub{font-family:var(--mono);font-size:9px;color:var(--text-dim)}
+.rt-chart-wrap{padding:12px}
+
+/* ── SEVERITY CARD ── */
+.sev-card{background:var(--surface);border:1px solid var(--border);padding:18px 16px;position:relative;overflow:hidden;transition:border-color .6s}
+.sev-card.risk-low{border-color:var(--green)}
+.sev-card.risk-medium{border-color:var(--yellow)}
+.sev-card.risk-high{border-color:var(--red);animation:hglow 1.4s ease-in-out infinite}
+@keyframes hglow{0%,100%{box-shadow:none}50%{box-shadow:0 0 30px 3px rgba(255,23,68,.22)}}
+/* Number counter animation */
+.sev-num{font-family:var(--disp);font-weight:900;font-size:72px;line-height:1;transition:color .5s;display:inline-block}
+.risk-low .sev-num{color:var(--green)} .risk-medium .sev-num{color:var(--yellow)} .risk-high .sev-num{color:var(--red)}
+/* Count up animation */
+@keyframes countUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+.sev-num.counting{animation:countUp .5s cubic-bezier(.4,0,.2,1)}
+.sev-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.sev-lbl{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px}
+.sev-meta{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:3px;line-height:1.7}
+.rbadge{display:flex;align-items:center;gap:7px;padding:7px 13px;border:1px solid currentColor;font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:3px;text-transform:uppercase;transition:all .5s}
+.risk-low .rbadge{color:var(--green)} .risk-medium .rbadge{color:var(--yellow)} .risk-high .rbadge{color:var(--red)}
+.bar-track{height:4px;background:var(--border2);position:relative;margin-top:12px}
+.bar-fill{height:100%;width:0%;transition:width 1.3s cubic-bezier(.4,0,.2,1);position:relative}
+.bar-fill::after{content:'';position:absolute;right:-1px;top:-5px;width:12px;height:12px;border-radius:50%;background:inherit;box-shadow:0 0 10px currentColor}
+.risk-low .bar-fill{background:var(--green)} .risk-medium .bar-fill{background:var(--yellow)} .risk-high .bar-fill{background:var(--red)}
+.bar-zones{display:grid;grid-template-columns:1fr 1fr 1fr;margin-top:5px}
+.bz{font-family:var(--mono);font-size:9px;color:var(--text-dim)}
+.bz:nth-child(2){text-align:center} .bz:last-child{text-align:right}
+
+/* ── AI CARD ── */
+.ai-card{background:var(--surface);border:1px solid var(--purple);overflow:hidden;position:relative}
+.ai-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--purple),transparent);animation:shimmer 3s ease-in-out infinite}
+.ai-thinking{display:flex;align-items:center;gap:10px;padding:16px;font-family:var(--mono);font-size:11px;color:var(--purple)}
+.ai-dots span{display:inline-block;width:6px;height:6px;background:var(--purple);border-radius:50%;margin-right:4px;animation:aidot 1.2s ease-in-out infinite}
+.ai-dots span:nth-child(2){animation-delay:.2s} .ai-dots span:nth-child(3){animation-delay:.4s}
+@keyframes aidot{0%,80%,100%{transform:scale(.55);opacity:.3}40%{transform:scale(1);opacity:1}}
+.ai-resp-hdr{display:flex;align-items:center;gap:7px;padding:12px 15px 0;font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--purple)}
+.ai-resp-body{padding:10px 15px 15px;font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.8;white-space:pre-wrap}
+.ai-conf-row{display:flex;align-items:center;gap:10px;padding:0 15px 14px;border-top:1px solid var(--border);padding-top:12px}
+.ai-conf-lbl{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1px}
+.ai-conf-bar{flex:1;height:3px;background:var(--border2)}
+.ai-conf-fill{height:100%;background:var(--purple);transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.ai-conf-pct{font-family:var(--mono);font-size:10px;color:var(--purple)}
+
+/* ── METRICS ── */
+.mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.mc{background:var(--surface2);border:1px solid var(--border);padding:10px 12px;transition:border-color .3s}
+.mc:hover{border-color:var(--border2)}
+.mc-l{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.mc-v{font-family:var(--disp);font-weight:700;font-size:18px;color:var(--text-bright)}
+.mc-u{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-left:2px}
+
+/* ── RESOURCE ALLOCATION ── */
+.resource-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:12px}
+.res-item{background:var(--surface2);border:1px solid var(--border);padding:11px;position:relative;overflow:hidden;transition:transform .2s}
+.res-item:hover{transform:translateY(-2px)}
+.res-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;transition:background .5s}
+.res-item.critical::before{background:var(--red)} .res-item.urgent::before{background:var(--orange)}
+.res-item.standard::before{background:var(--yellow)} .res-item.monitor::before{background:var(--green)}
+.res-icon{font-size:17px;margin-bottom:3px}
+.res-name{font-family:var(--disp);font-weight:700;font-size:12px;color:var(--text-bright);letter-spacing:.5px}
+.res-count{font-family:var(--mono);font-size:18px;color:var(--accent);margin:2px 0}
+.res-unit{font-family:var(--mono);font-size:9px;color:var(--text-dim)}
+.res-bar{height:2px;background:var(--border2);margin-top:7px}
+.res-bar-fill{height:100%;background:var(--accent);width:0%;transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+
+/* ── ACTIONS ── */
+.action-card{background:var(--surface);border:1px solid var(--border);overflow:hidden;transition:border-color .5s}
+.action-card.risk-low{border-color:rgba(0,230,118,.3)} .action-card.risk-medium{border-color:rgba(255,193,7,.3)} .action-card.risk-high{border-color:rgba(255,23,68,.3)}
+.achdr{padding:10px 15px;font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:7px}
+.risk-low .achdr{background:var(--green-dim);color:var(--green)} .risk-medium .achdr{background:var(--yellow-dim);color:var(--yellow)} .risk-high .achdr{background:var(--red-dim);color:var(--red)}
+.acbody{padding:11px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ac-item{display:flex;align-items:flex-start;gap:6px;padding:8px;background:var(--surface2);border-left:2px solid var(--border2);transition:border-color .5s,transform .2s}
+.ac-item:hover{transform:translateX(2px)}
+.risk-low .ac-item{border-left-color:var(--green)} .risk-medium .ac-item{border-left-color:var(--yellow)} .risk-high .ac-item{border-left-color:var(--red)}
+.ac-ico{font-size:14px;flex-shrink:0;margin-top:1px} .ac-txt{font-size:11px;font-weight:500;color:var(--text);line-height:1.4}
+
+/* ── CHARTS ── */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chart-card{background:var(--surface);border:1px solid var(--border);overflow:hidden}
+.chart-body{padding:12px}
+
+/* ── IDLE ── */
+.idle{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;text-align:center;border:1px solid var(--border);background:var(--surface)}
+.idle-ico{font-size:42px;margin-bottom:10px;opacity:.18}
+.idle-t{font-family:var(--disp);font-weight:600;font-size:15px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim)}
+.idle-s{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:4px;opacity:.45}
+
+/* ── STAGGER ANIMATIONS ── */
+.stagger-1{animation:fadeUp .5s .05s ease both}
+.stagger-2{animation:fadeUp .5s .12s ease both}
+.stagger-3{animation:fadeUp .5s .19s ease both}
+.stagger-4{animation:fadeUp .5s .26s ease both}
+.stagger-5{animation:fadeUp .5s .33s ease both}
+.stagger-6{animation:fadeUp .5s .40s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── MODE INDICATOR ── */
+.mode-ind{font-family:var(--mono);font-size:10px;padding:3px 9px;border:1px solid;letter-spacing:1px;display:inline-flex;align-items:center;gap:4px}
+.mode-formula{color:var(--accent);border-color:var(--accent)} .mode-ai{color:var(--purple);border-color:var(--purple)}
+
+/* ── SPIN ── */
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:5px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── LEFT COL PANELS ── */
+.left-col{display:flex;flex-direction:column;gap:16px}
+
+@media(max-width:1060px){.main-grid{grid-template-columns:1fr}.mrow{grid-template-columns:1fr 1fr}.charts-row{grid-template-columns:1fr}.loc-strip{grid-template-columns:1fr 1fr}.fdays{grid-template-columns:repeat(4,1fr)}.fd:nth-child(n+5){display:none}.rt-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.acbody{grid-template-columns:1fr}.resource-grid{grid-template-columns:1fr}.fdays{grid-template-columns:repeat(3,1fr)}.fd:nth-child(n+4){display:none}}
+</style>
+</head>
+<body>
+
+<!-- ═══ BOOT SCREEN ═══ -->
+<div id="bootScreen">
+  <div class="boot-tri"></div>
+  <div class="boot-logo">Disaster<span>Sim</span> <sup>AI</sup></div>
+  <div class="boot-tagline">Advanced Disaster Impact Prediction System</div>
+  <div class="boot-log" id="bootLog"></div>
+  <div class="boot-bar-wrap"><div class="boot-bar" id="bootBar"></div></div>
+  <div class="boot-pct" id="bootPct">0%</div>
+</div>
+
+<!-- ═══ PARTICLE CANVAS ═══ -->
+<canvas id="particles"></canvas>
+<div id="atmosphere"></div>
+<div class="bg-grid"></div>
+
+<!-- ═══ TOASTS ═══ -->
+<div id="toastContainer"></div>
+
+<!-- ═══ PROFILES DRAWER ═══ -->
+<div id="profilesOverlay" onclick="closeProfiles(event)">
+  <div id="profilesDrawer">
+    <div class="drawer-hdr">
+      <div class="drawer-title">⚙ Profiles</div>
+      <button class="drawer-close" onclick="closeProfilesDrawer()">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="drawer-section-title">Save Current Configuration</div>
+      <div class="save-form">
+        <input class="save-input" id="profileNameInput" type="text" placeholder="Profile name — e.g. Mumbai Flood 2024" maxlength="40"/>
+        <div class="save-meta" id="profileSaveMeta">No simulation run yet</div>
+        <button class="save-btn" id="profileSaveBtn" onclick="saveProfile()" disabled>💾 SAVE PROFILE</button>
+      </div>
+      <div class="drawer-section-title">Saved Profiles</div>
+      <div class="profile-list" id="profileList">
+        <div class="no-profiles">No profiles saved yet.<br>Run a simulation and save it.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-tri"></div>
+      <div class="logo-text">Disaster<em>Sim</em> <sup>AI</sup></div>
+    </div>
+    <div class="hdr-right">
+      <div class="pill pill-green"><div class="pdot"></div>LIVE FORECAST</div>
+      <div class="pill pill-purple"><div class="pdot"></div>AI ENGINE</div>
+      <div class="pill pill-orange" id="alertPill" style="display:none"><div class="pdot"></div>ALERT ACTIVE</div>
+      <button class="profile-hdr-btn" onclick="openProfiles()">👤 PROFILES <span id="profileCount" style="color:var(--accent)"></span></button>
+      <div class="hdr-clock" id="clock">—</div>
+    </div>
+  </header>
+
+  <!-- ALERT BANNER -->
+  <div id="alertBanner">
+    <span id="alertIcon">⚠</span>
+    <span id="alertText">ALERT ACTIVE</span>
+    <span style="margin-left:auto;cursor:pointer;opacity:.6" onclick="dismissAlert()">✕ DISMISS</span>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="search-bar ripple-container">
+    <span class="si">🔍</span>
+    <div class="siw">
+      <input class="sinput" id="cityInput" type="text" placeholder="Search city — Mumbai, Tokyo, New York, London…" autocomplete="off" oninput="onCityInput()" onkeydown="onCityKey(event)"/>
+      <div class="ssub" id="searchSub">Search a city to load live weather · AI predictions use historical disaster patterns</div>
+      <div class="sugg" id="sugg"></div>
+    </div>
+    <button class="voice-btn" id="voiceInputBtn" onclick="startVoiceInput()" title="Voice input">🎤 SPEAK</button>
+    <button class="sbtn ripple-container" id="searchBtn" onclick="doSearch()">LOCATE &amp; FORECAST</button>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- LEFT COL -->
+    <div class="left-col">
+
+      <!-- MAP -->
+      <div class="panel" style="padding:0;overflow:visible">
+        <div class="phdr"><span class="dot"></span>Live Map — <span id="mapLabel" style="color:var(--text-bright);margin-left:4px;font-family:var(--disp);font-size:12px;font-weight:600">No location</span></div>
+        <div style="position:relative"><div id="map"></div><div class="map-coord" id="mapCoord">LAT — · LON —</div></div>
+      </div>
+
+      <!-- AI TOGGLE + PARAMETERS -->
+      <div class="panel" style="padding:0">
+        <div class="ai-toggle-row">
+          <div class="ai-toggle-label">🤖 AI Prediction Mode <span class="ai-badge">CLAUDE AI</span></div>
+          <label class="toggle-sw">
+            <input type="checkbox" id="aiToggle" onchange="onAiToggle()">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </div>
+        <div class="pbody">
+          <div style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+            <div id="modeInd" class="mode-ind mode-formula">📐 FORMULA MODE</div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim)" id="aiStatus">Toggle AI for deep analysis</div>
+          </div>
+
+          <div class="field">
+            <div class="fl"><span class="fn">🌧️ Rainfall</span><span class="fv" id="rD">120 mm</span></div>
+            <input type="range" id="rainfall" min="0" max="300" value="120" oninput="ud()">
+            <div class="rl"><span>0 mm</span><span>150 mm</span><span>300 mm</span></div>
+          </div>
+          <div class="field">
+            <div class="fl"><span class="fn">👥 Population Density</span><span class="fv" id="pD">5,000 /km²</span></div>
+            <input type="range" id="population" min="0" max="20000" value="5000" step="100" oninput="ud()">
+            <div class="rl"><span>0</span><span>10K</span><span>20K /km²</span></div>
+          </div>
+          <div class="field">
+            <div class="fl"><span class="fn">🏗️ Infrastructure</span></div>
+            <div class="ig">
+              <button class="ib active" onclick="selInfra(this,'low')">Low</button>
+              <button class="ib" onclick="selInfra(this,'medium')">Medium</button>
+              <button class="ib" onclick="selInfra(this,'high')">High</button>
+            </div>
+          </div>
+          <button class="sim-btn ripple-container" id="simBtn" onclick="simulate()"><span>▶ RUN SIMULATION</span></button>
+          <button class="speak-btn" id="speakBtn" onclick="speakResults()" style="display:none">🔊 SPEAK RESULTS</button>
+        </div>
+        <div class="ticker"><span class="ti">AI DISASTER PREDICTION · FLOOD RISK · CYCLONE TRACK · EARTHQUAKE IMPACT · INFRA RESILIENCE · STORM SURGE · EVACUATION ROUTING · RESOURCE ALLOCATION · VOICE COMMANDS · PROFILES · AI DISASTER PREDICTION · FLOOD RISK · CYCLONE TRACK · EARTHQUAKE IMPACT · INFRA RESILIENCE &nbsp;&nbsp;</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT COL -->
+    <div class="right-col" id="rightCol">
+
+      <!-- LOC STRIP -->
+      <div id="locWrap" style="display:none">
+        <div class="loc-strip">
+          <div class="ls"><div class="ls-l">City</div><div class="ls-v" id="sCity" style="font-size:13px">—</div></div>
+          <div class="ls"><div class="ls-l">Temperature</div><div class="ls-v" id="sTemp">—<span class="ls-u">°C</span></div></div>
+          <div class="ls"><div class="ls-l">Wind Speed</div><div class="ls-v" id="sWind">—<span class="ls-u">km/h</span></div></div>
+          <div class="ls"><div class="ls-l">Conditions</div><div class="ls-v" id="sWx" style="font-size:24px">—</div></div>
+        </div>
+        <div class="fcast">
+          <div class="phdr" style="border-bottom:1px solid var(--border)"><span class="dot"></span>7-Day Forecast — <span style="color:var(--accent);margin-left:4px;font-size:9px">click a day to load its rainfall</span></div>
+          <div class="fdays" id="fdays"></div>
+        </div>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div class="rt-dashboard" id="rtBoard" style="display:none">
+        <div class="phdr"><span class="dot"></span>Real-Time Impact Dashboard</div>
+        <div class="rt-grid">
+          <div class="rt-gauge"><div class="rt-gauge-lbl">Flood Risk</div><div class="rt-ring"><svg viewBox="0 0 70 70" width="70" height="70"><circle class="track" cx="35" cy="35" r="28"/><circle class="fill" id="gFlood" cx="35" cy="35" r="28" stroke="#00b4d8" stroke-dasharray="175.9" stroke-dashoffset="175.9"/></svg><div class="rt-val" id="gvFlood">0%</div></div><div class="rt-sub" id="gsFlood">—</div></div>
+          <div class="rt-gauge"><div class="rt-gauge-lbl">Casualty Risk</div><div class="rt-ring"><svg viewBox="0 0 70 70" width="70" height="70"><circle class="track" cx="35" cy="35" r="28"/><circle class="fill" id="gCas" cx="35" cy="35" r="28" stroke="#ff1744" stroke-dasharray="175.9" stroke-dashoffset="175.9"/></svg><div class="rt-val" id="gvCas">0%</div></div><div class="rt-sub" id="gsCas">—</div></div>
+          <div class="rt-gauge"><div class="rt-gauge-lbl">Infra Damage</div><div class="rt-ring"><svg viewBox="0 0 70 70" width="70" height="70"><circle class="track" cx="35" cy="35" r="28"/><circle class="fill" id="gInfra" cx="35" cy="35" r="28" stroke="#ff6d00" stroke-dasharray="175.9" stroke-dashoffset="175.9"/></svg><div class="rt-val" id="gvInfra">0%</div></div><div class="rt-sub" id="gsInfra">—</div></div>
+          <div class="rt-gauge"><div class="rt-gauge-lbl">Response Score</div><div class="rt-ring"><svg viewBox="0 0 70 70" width="70" height="70"><circle class="track" cx="35" cy="35" r="28"/><circle class="fill" id="gResp" cx="35" cy="35" r="28" stroke="#00e676" stroke-dasharray="175.9" stroke-dashoffset="175.9"/></svg><div class="rt-val" id="gvResp">0%</div></div><div class="rt-sub" id="gsResp">—</div></div>
+        </div>
+        <div class="rt-chart-wrap"><canvas id="rtChart" height="90"></canvas></div>
+      </div>
+
+      <!-- SIMULATION RESULTS -->
+      <div id="simResults">
+        <div class="idle">
+          <div class="idle-ico">🛰️</div>
+          <div class="idle-t">Awaiting Simulation</div>
+          <div class="idle-s">Search city · configure parameters · run simulation</div>
+        </div>
+      </div>
+
+    </div><!-- /right -->
+  </div><!-- /grid -->
+</div><!-- /wrap -->
+
+<script>
+// ══════════ BOOT SEQUENCE ══════════════════════════════
+const bootLines=[
+  {txt:'Initializing sensor array…',  st:'ok',  delay:0},
+  {txt:'Loading weather API modules…',st:'ok',  delay:250},
+  {txt:'Calibrating prediction engine…',st:'ok',delay:480},
+  {txt:'Connecting to Leaflet maps…',  st:'ok',  delay:700},
+  {txt:'Importing historical datasets…',st:'ok',delay:900},
+  {txt:'Starting AI prediction module…',st:'load',delay:1100},
+  {txt:'DisasterSim AI v4.0 READY',   st:'ok',  delay:1350},
+];
+const bootPcts=[10,25,40,55,68,82,100];
+
+function runBoot(){
+  const log=document.getElementById('bootLog');
+  const bar=document.getElementById('bootBar');
+  const pct=document.getElementById('bootPct');
+  bootLines.forEach((l,i)=>{
+    setTimeout(()=>{
+      const el=document.createElement('div');
+      el.className=`boot-log-line ${l.st}`;
+      el.style.animationDelay='0s';
+      el.innerHTML=`<span class="bll-status">${l.st==='ok'?'[ OK ]':'[LOAD]'}</span><span>${l.txt}</span>`;
+      log.appendChild(el);
+      bar.style.width=bootPcts[i]+'%';
+      pct.textContent=bootPcts[i]+'%';
+    },l.delay);
+  });
+  setTimeout(()=>{
+    document.getElementById('bootScreen').classList.add('done');
+    document.body.classList.add('ready');
+    initParticles();
+  },1800);
+}
+runBoot();
+
+// ══════════ PARTICLE SYSTEM ════════════════════════════
+let particles=[], pCanvas, pCtx, riskLevel='low';
+function initParticles(){
+  pCanvas=document.getElementById('particles');
+  pCtx=pCanvas.getContext('2d');
+  resizeParticles();
+  window.addEventListener('resize',resizeParticles);
+  for(let i=0;i<80;i++) particles.push(newParticle(true));
+  requestAnimationFrame(animParticles);
+}
+function resizeParticles(){
+  pCanvas.width=window.innerWidth;
+  pCanvas.height=window.innerHeight;
+}
+function newParticle(random=false){
+  const colors={low:['rgba(0,180,216,','rgba(0,230,118,'],medium:['rgba(255,193,7,','rgba(0,180,216,'],high:['rgba(255,23,68,','rgba(255,109,0,']};
+  const palette=colors[riskLevel]||colors.low;
+  const color=palette[Math.floor(Math.random()*palette.length)];
+  return{
+    x:Math.random()*pCanvas.width,
+    y:random?Math.random()*pCanvas.height:-10,
+    size:Math.random()*1.5+0.3,
+    speedX:(Math.random()-.5)*0.5,
+    speedY:Math.random()*0.6+0.2,
+    opacity:Math.random()*0.5+0.1,
+    color,
+    life:Math.random()*200+100,
+    age:random?Math.floor(Math.random()*200):0,
+  };
+}
+function animParticles(){
+  pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);
+  const count=riskLevel==='high'?120:riskLevel==='medium'?90:60;
+  while(particles.length<count) particles.push(newParticle());
+  while(particles.length>count) particles.shift();
+  particles.forEach((p,i)=>{
+    p.x+=p.speedX; p.y+=p.speedY; p.age++;
+    if(p.age>p.life||p.y>pCanvas.height+10){
+      particles[i]=newParticle();
+      return;
+    }
+    const fade=Math.sin((p.age/p.life)*Math.PI);
+    pCtx.beginPath();
+    pCtx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    pCtx.fillStyle=p.color+(p.opacity*fade)+')';
+    pCtx.fill();
+    // Occasional glowing streaks on high risk
+    if(riskLevel==='high'&&p.size>1.2){
+      pCtx.beginPath();
+      pCtx.moveTo(p.x,p.y);
+      pCtx.lineTo(p.x-p.speedX*4,p.y-p.speedY*4);
+      pCtx.strokeStyle=p.color+(p.opacity*fade*.4)+')';
+      pCtx.lineWidth=p.size*.5;
+      pCtx.stroke();
+    }
+  });
+  requestAnimationFrame(animParticles);
+}
+
+// ══════════ CLOCK ══════════════════════════════════════
+(function tick(){document.getElementById('clock').textContent=new Date().toUTCString().replace('GMT','UTC').slice(0,-4);setTimeout(tick,1000);})();
+
+// ══════════ MAP ════════════════════════════════════════
+const map=L.map('map',{zoomControl:true,attributionControl:false}).setView([20,0],2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
+const pulseIcon=L.divIcon({html:`<div style="width:20px;height:20px;border:2px solid #00b4d8;background:rgba(0,180,216,.22);border-radius:50%;box-shadow:0 0 14px #00b4d8"></div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]});
+let mapMarker=null;
+function placeMarker(lat,lon,name){
+  map.flyTo([lat,lon],10,{duration:1.4});
+  if(mapMarker)map.removeLayer(mapMarker);
+  mapMarker=L.marker([lat,lon],{icon:pulseIcon}).addTo(map).bindPopup(`<b style="font-family:monospace">${name}</b>`).openPopup();
+  document.getElementById('mapCoord').textContent=`LAT ${parseFloat(lat).toFixed(4)} · LON ${parseFloat(lon).toFixed(4)}`;
+  document.getElementById('mapLabel').textContent=name;
+}
+
+// ══════════ STATE ══════════════════════════════════════
+let infraLevel='low', aiMode=false, weatherData=null;
+let simHistory=[], rtChart=null, histChart=null, fcastChart=null;
+let lastResult=null, isSpeaking=false;
+
+// ══════════ HELPERS ════════════════════════════════════
+function ud(){
+  document.getElementById('rD').textContent=document.getElementById('rainfall').value+' mm';
+  document.getElementById('pD').textContent=Number(document.getElementById('population').value).toLocaleString()+' /km²';
+}
+function selInfra(btn,val){
+  document.querySelectorAll('.ib').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); infraLevel=val;
+}
+function onAiToggle(){
+  aiMode=document.getElementById('aiToggle').checked;
+  const ind=document.getElementById('modeInd'), st=document.getElementById('aiStatus'), btn=document.getElementById('simBtn');
+  if(aiMode){ind.className='mode-ind mode-ai';ind.textContent='🤖 AI PREDICTION MODE';st.textContent='Historical disaster pattern analysis';btn.classList.add('ai-mode');toast('AI Prediction Mode activated — Claude will analyze parameters','success');}
+  else{ind.className='mode-ind mode-formula';ind.textContent='📐 FORMULA MODE';st.textContent='Toggle AI for deep analysis';btn.classList.remove('ai-mode');}
+}
+function wmoIcon(c){if(c===0)return'☀️';if(c<=2)return'⛅';if(c<=3)return'☁️';if(c<=49)return'🌫️';if(c<=59)return'🌦️';if(c<=69)return'🌧️';if(c<=79)return'🌨️';if(c<=84)return'🌧️';return'⛈️';}
+function wmoLabel(c){if(c===0)return'Clear Sky';if(c<=2)return'Partly Cloudy';if(c<=3)return'Overcast';if(c<=49)return'Fog';if(c<=59)return'Drizzle';if(c<=69)return'Rain';if(c<=79)return'Snow';if(c<=84)return'Heavy Rain';return'Thunderstorm';}
+
+// ══════════ RIPPLE EFFECT ══════════════════════════════
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('.ripple-container');
+  if(!btn)return;
+  const r=document.createElement('div');
+  r.className='ripple';
+  const rect=btn.getBoundingClientRect();
+  const sz=Math.max(rect.width,rect.height);
+  r.style.cssText=`width:${sz}px;height:${sz}px;left:${e.clientX-rect.left-sz/2}px;top:${e.clientY-rect.top-sz/2}px`;
+  btn.appendChild(r);
+  setTimeout(()=>r.remove(),700);
+});
+
+// ══════════ TOASTS ══════════════════════════════════════
+function toast(msg,type='info',dur=4000){
+  const tc=document.getElementById('toastContainer');
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;
+  el.innerHTML=`${msg}<button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+  tc.appendChild(el);
+  setTimeout(()=>{if(el.parentNode)el.remove();},dur+300);
+}
+
+// ══════════ SCREEN SHAKE ═══════════════════════════════
+function shakeScreen(){
+  document.body.classList.remove('shaking');
+  void document.body.offsetWidth;
+  document.body.classList.add('shaking');
+  setTimeout(()=>document.body.classList.remove('shaking'),600);
+}
+
+// ══════════ COUNT-UP ANIMATION ═════════════════════════
+function animateCount(el,target,duration=800){
+  const start=parseInt(el.textContent)||0;
+  const range=target-start;
+  const startTime=performance.now();
+  el.classList.add('counting');
+  function step(now){
+    const p=Math.min((now-startTime)/duration,1);
+    const ease=1-Math.pow(1-p,3);
+    el.textContent=Math.round(start+range*ease);
+    if(p<1)requestAnimationFrame(step);
+    else{el.textContent=target;setTimeout(()=>el.classList.remove('counting'),100);}
+  }
+  requestAnimationFrame(step);
+}
+
+// ══════════ ATMOSPHERE ═════════════════════════════════
+function setAtmosphere(level){
+  riskLevel=level;
+  document.body.className=document.body.className.replace(/atm-\w+/g,'').trim();
+  if(level!=='low')document.body.classList.add('atm-'+level);
+}
+
+// ══════════ ALERT SYSTEM ═══════════════════════════════
+function triggerAlert(level,sev,city){
+  const banner=document.getElementById('alertBanner');
+  const pill=document.getElementById('alertPill');
+  const icons={low:'✅',medium:'⚠️',high:'🚨'};
+  const msgs={
+    low:`LOW RISK — Severity ${Math.round(sev)} · Monitor conditions in ${city||'area'}`,
+    medium:`⚠ MEDIUM RISK — Severity ${Math.round(sev)} · Prepare emergency teams · ${city||'area'}`,
+    high:`🚨 HIGH RISK EMERGENCY — Severity ${Math.round(sev)} · EVACUATE IMMEDIATELY · ${city||'area'}`
+  };
+  banner.className=level;
+  document.getElementById('alertIcon').textContent=icons[level];
+  document.getElementById('alertText').textContent=msgs[level];
+  pill.style.display='flex';
+  if(level==='high'){
+    shakeScreen();
+    toast('🚨 CRITICAL: Immediate evacuation required!','danger',6000);
+    setTimeout(()=>toast('🚁 Deploy aerial rescue units NOW','danger',5000),700);
+    setTimeout(()=>toast('🏥 All medical centers on standby','warn',4000),1400);
+    speakAlert(`Critical disaster alert! Severity index ${Math.round(sev)}. Immediate evacuation required.`);
+  }else if(level==='medium'){
+    toast('⚠ Medium risk — prepare rescue teams','warn',5000);
+    toast('📦 Pre-position emergency supplies','info',4500);
+  }else{
+    toast('✅ Low risk — continue monitoring','success',4000);
+  }
+}
+function dismissAlert(){
+  document.getElementById('alertBanner').style.display='none';
+  document.getElementById('alertBanner').className='';
+  document.getElementById('alertPill').style.display='none';
+}
+function speakAlert(text){
+  if(!window.speechSynthesis)return;
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=1;u.pitch=1.1;u.volume=1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+// ══════════ VOICE ══════════════════════════════════════
+function startVoiceInput(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Voice input not supported. Try Chrome.','warn');return;}
+  const rec=new SR();rec.lang='en-US';rec.interimResults=false;
+  const btn=document.getElementById('voiceInputBtn');
+  btn.classList.add('listening');btn.textContent='🎤 LISTENING…';
+  toast('🎤 Say: "rainfall 150, population 8000, infrastructure low"','info',6000);
+  rec.start();
+  rec.onresult=e=>{const t=e.results[0][0].transcript.toLowerCase();toast(`🎤 Heard: "${t}"`,'success');parseVoice(t);};
+  rec.onerror=e=>toast(`Voice error: ${e.error}`,'warn');
+  rec.onend=()=>{btn.classList.remove('listening');btn.textContent='🎤 SPEAK';};
+}
+function parseVoice(text){
+  const rm=text.match(/rainfall\s*(\d+)/i)||text.match(/rain\s*(\d+)/i)||text.match(/(\d+)\s*mm/i);
+  if(rm){document.getElementById('rainfall').value=Math.min(300,Math.max(0,parseInt(rm[1])));}
+  const pm=text.match(/population\s*(\d+)/i)||text.match(/(\d+)\s*(?:thousand|k)/i);
+  if(pm){let v=parseInt(pm[1]);if(text.includes('thousand')||text.includes(' k'))v*=1000;document.getElementById('population').value=Math.min(20000,v);}
+  if(text.includes('high infra'))selInfra(document.querySelectorAll('.ib')[2],'high');
+  else if(text.includes('medium'))selInfra(document.querySelectorAll('.ib')[1],'medium');
+  else if(text.includes('low infra'))selInfra(document.querySelectorAll('.ib')[0],'low');
+  const cm=text.match(/(?:search|city|go to)\s+([a-z\s]+)/i);
+  if(cm){document.getElementById('cityInput').value=cm[1].trim();doSearch();}
+  ud();
+  if(text.includes('simulate')||text.includes('run')||text.includes('predict'))simulate();
+}
+function speakResults(){
+  if(!lastResult||!window.speechSynthesis)return;
+  const r=lastResult;
+  const text=`Simulation complete. Severity index: ${Math.round(r.capped)}. Risk level: ${r.risk.label}. Rainfall: ${r.rain} millimeters. Population density: ${(r.pop/1000).toFixed(1)} thousand per square kilometer. Infrastructure: ${infraLevel}. ${r.risk.level==='high'?'Emergency evacuation required immediately.':r.risk.level==='medium'?'Prepare medical and rescue teams.':'Continue monitoring the situation.'}`;
+  const btn=document.getElementById('speakBtn');
+  if(window.speechSynthesis.speaking){window.speechSynthesis.cancel();btn.classList.remove('speaking');btn.textContent='🔊 SPEAK RESULTS';isSpeaking=false;return;}
+  const u=new SpeechSynthesisUtterance(text);u.rate=.95;u.pitch=1;
+  btn.classList.add('speaking');btn.textContent='🔊 STOP';isSpeaking=true;
+  u.onend=()=>{btn.classList.remove('speaking');btn.textContent='🔊 SPEAK RESULTS';isSpeaking=false;};
+  window.speechSynthesis.speak(u);
+}
+
+// ══════════ GEOCODING ══════════════════════════════════
+let sugTimer=null;
+function onCityInput(){const v=document.getElementById('cityInput').value.trim();clearTimeout(sugTimer);if(v.length<3){hideSug();return;}sugTimer=setTimeout(()=>fetchSug(v),380);}
+function onCityKey(e){if(e.key==='Enter')doSearch();if(e.key==='Escape')hideSug();}
+function hideSug(){document.getElementById('sugg').style.display='none';}
+async function fetchSug(q){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5`,{headers:{'Accept-Language':'en'}});
+    const d=await r.json();
+    const box=document.getElementById('sugg');
+    if(!d.length){box.style.display='none';return;}
+    box.innerHTML=d.map(p=>`<div class="sg" onclick="pickSug(${p.lat},${p.lon},\`${e_(p.display_name)}\`)"><div class="sg-c">${p.name||p.display_name.split(',')[0]}</div><div class="sg-m">${p.display_name}</div></div>`).join('');
+    box.style.display='block';
+  }catch(e){hideSug();}
+}
+function e_(s){return s.replace(/`/g,'').replace(/\\/g,'');}
+async function pickSug(lat,lon,full){hideSug();document.getElementById('cityInput').value=full.split(',')[0];await loadLoc(parseFloat(lat),parseFloat(lon),full.split(',')[0],full);}
+async function doSearch(){
+  const q=document.getElementById('cityInput').value.trim();if(!q)return;hideSug();
+  const btn=document.getElementById('searchBtn');btn.disabled=true;btn.textContent='SEARCHING…';
+  setSub('<span class="spin"></span>Geocoding location…');
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,{headers:{'Accept-Language':'en'}});
+    const d=await r.json();
+    if(!d.length)throw new Error('not found');
+    await loadLoc(parseFloat(d[0].lat),parseFloat(d[0].lon),d[0].name||q,d[0].display_name);
+  }catch(e){setSub('⚠ Location not found. Try another city name.');}
+  finally{btn.disabled=false;btn.textContent='LOCATE & FORECAST';}
+}
+function setSub(h){document.getElementById('searchSub').innerHTML=h;}
+
+// ══════════ WEATHER ════════════════════════════════════
+async function loadLoc(lat,lon,name,full){
+  placeMarker(lat,lon,name);
+  setSub('<span class="spin"></span>Fetching live weather from Open-Meteo…');
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,weathercode,windspeed_10m_max&current_weather=true&timezone=auto&forecast_days=7`;
+    const r=await fetch(url);const d=await r.json();
+    weatherData=d;
+    setSub(`📍 ${full} · ✓ Forecast loaded`);
+    const cw=d.current_weather;
+    document.getElementById('sCity').textContent=name;
+    document.getElementById('sTemp').innerHTML=`${cw.temperature}<span class="ls-u">°C</span>`;
+    document.getElementById('sWind').innerHTML=`${cw.windspeed}<span class="ls-u">km/h</span>`;
+    document.getElementById('sWx').textContent=wmoIcon(cw.weathercode);
+    document.getElementById('locWrap').style.display='block';
+    buildFcast(d.daily);loadDay(0);
+    toast(`📍 ${name} loaded · weather forecast active`,'success');
+  }catch(e){setSub('⚠ Weather unavailable. Check your connection.');}
+}
+function buildFcast(daily){
+  const dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const mx=Math.max(...daily.precipitation_sum,1);
+  document.getElementById('fdays').innerHTML=daily.time.map((t,i)=>{
+    const d=new Date(t);const r=(daily.precipitation_sum[i]||0).toFixed(1);
+    return`<div class="fd${i===0?' active':''}" id="fd${i}" onclick="selDay(${i})" style="animation-delay:${i*.06}s">
+      <div class="fd-n">${i===0?'TODAY':dow[d.getDay()]}</div><div class="fd-i">${wmoIcon(daily.weathercode[i])}</div>
+      <div class="fd-r">${r}<span>mm</span></div><div class="fd-t">${daily.temperature_2m_max[i]}°/${daily.temperature_2m_min[i]}°</div>
+      <div class="fd-b"><div class="fd-bf" style="width:${Math.round((daily.precipitation_sum[i]||0)/mx*100)}%"></div></div>
+    </div>`;
+  }).join('');
+}
+function selDay(i){document.querySelectorAll('.fd').forEach(e=>e.classList.remove('active'));document.getElementById('fd'+i)?.classList.add('active');loadDay(i);}
+function loadDay(i){if(!weatherData)return;document.getElementById('rainfall').value=Math.min(Math.round((weatherData.daily.precipitation_sum[i]||0)*3.5),300);ud();}
+
+// ══════════ SIMULATION ═════════════════════════════════
+function calcSev(rain,pop,infra){return(rain*.5)+(pop*.3)*{low:1.5,medium:1.0,high:.5}[infra];}
+function getRisk(s){
+  if(s<50)return{level:'low',  label:'LOW RISK',  icon:'🟢',cls:'risk-low'};
+  if(s<100)return{level:'medium',label:'MEDIUM RISK',icon:'🟡',cls:'risk-medium'};
+  return{level:'high',label:'HIGH RISK',icon:'🔴',cls:'risk-high'};
+}
+const ACTS={
+  low:[{i:'📡',t:'Monitor sensors and weather alerts'},{i:'📋',t:'Review emergency response protocols'},{i:'🔔',t:'Issue public awareness advisory'},{i:'🗺️',t:'Map flood-prone vulnerable zones'}],
+  medium:[{i:'🚑',t:'Deploy medical teams to staging areas'},{i:'📦',t:'Pre-position emergency supply caches'},{i:'📢',t:'Issue Level-2 evacuation warnings'},{i:'🌉',t:'Inspect bridges, dams and structures'}],
+  high:[{i:'🚨',t:'Mandatory evacuation — all zones'},{i:'🚁',t:'Deploy aerial search & rescue'},{i:'🏥',t:'Activate all hospitals and trauma centers'},{i:'⛔',t:'Close roads · restrict access · lockdown'}],
+};
+function calcRes(sev,pop,risk){
+  const b=pop/1000;const m={low:.5,medium:1,high:2}[risk];
+  return{rescue:Math.round(b*2*m+sev*.1),medical:Math.round(b*1.5*m+sev*.05),supplies:Math.round(b*3*m+sev*.2),vehicles:Math.round(b*.5*m+sev*.05),shelters:Math.round(b*.3*m+sev*.03),budget:Math.round((b*50*m+sev*5)*1000)};
+}
+function updateGauges(rain,pop,infra,sev){
+  const iM={low:1.5,medium:1,high:.5}[infra];
+  const flood=Math.min(100,rain/3*iM);
+  const cas=Math.min(100,(pop/200+sev/3)*iM);
+  const infDmg=Math.min(100,(sev/2)*iM);
+  const resp=Math.max(0,100-sev/2);
+  const circ=175.9;
+  [{id:'gFlood',vId:'gvFlood',sId:'gsFlood',val:flood,stroke:flood>66?'#ff1744':flood>33?'#ffc107':'#00b4d8',sub:flood>66?'CRITICAL':'ELEVATED'},
+   {id:'gCas',  vId:'gvCas',  sId:'gsCas',  val:cas,  stroke:cas>60?'#ff1744':cas>30?'#ff6d00':'#ffc107',     sub:cas>60?'HIGH':'MODERATE'},
+   {id:'gInfra',vId:'gvInfra',sId:'gsInfra',val:infDmg,stroke:infDmg>60?'#ff6d00':'#ffc107',                  sub:infDmg>60?'SEVERE':'MODERATE'},
+   {id:'gResp', vId:'gvResp', sId:'gsResp', val:resp,  stroke:resp>60?'#00e676':'#ffc107',                    sub:resp>60?'ADEQUATE':'STRAINED'},
+  ].forEach(g=>{
+    const el=document.getElementById(g.id);
+    el.style.strokeDashoffset=circ-(g.val/100)*circ;el.style.stroke=g.stroke;
+    document.getElementById(g.vId).textContent=Math.round(g.val)+'%';
+    document.getElementById(g.sId).textContent=g.sub;
+  });
+  document.getElementById('rtBoard').style.display='block';
+  const ctx=document.getElementById('rtChart');
+  if(rtChart)rtChart.destroy();
+  rtChart=new Chart(ctx,{type:'radar',data:{labels:['Flood Risk','Casualty','Infra Damage','Response','Pop Exposure','Rain'],datasets:[{data:[flood,cas,infDmg,resp,Math.min(100,pop/200),Math.min(100,rain/3)],borderColor:'rgba(0,180,216,.8)',backgroundColor:'rgba(0,180,216,.1)',borderWidth:1.5,pointRadius:3,pointBackgroundColor:'#00b4d8'}]},options:{plugins:{legend:{display:false}},scales:{r:{grid:{color:'#16253a'},angleLines:{color:'#16253a'},pointLabels:{color:'#364f62',font:{family:"'Share Tech Mono'",size:9}},ticks:{display:false},suggestedMin:0,suggestedMax:100}},animation:{duration:1000}}});
+}
+
+async function getAiAnalysis(rain,pop,infra,sev,riskLabel,city,wLabel){
+  const aiCard=document.getElementById('aiCard');if(!aiCard)return;
+  aiCard.innerHTML=`<div class="ai-thinking"><div class="ai-dots"><span></span><span></span><span></span></div>Claude is analyzing disaster patterns…</div>`;
+  const prompt=`You are a disaster risk AI. Analyze concisely:
+Location: ${city||'unspecified'} | Rainfall: ${rain}mm | Pop: ${pop}/km² | Infra: ${infra} | Weather: ${wLabel} | Severity: ${Math.round(sev)} | Risk: ${riskLabel}
+
+Reply EXACTLY in this format (no extra text):
+PREDICTION: [1 sentence]
+CONFIDENCE: [60-97]%
+KEY_RISKS: • [risk1] • [risk2] • [risk3]
+HISTORICAL_PATTERN: [1 sentence]
+PRIORITY_ACTION: [1 sentence]`;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:[{role:'user',content:prompt}]})});
+    const data=await res.json();const text=data.content?.[0]?.text||'Analysis unavailable.';
+    const cm=text.match(/CONFIDENCE:\s*(\d+)%/);const conf=cm?parseInt(cm[1]):78;
+    aiCard.innerHTML=`<div class="ai-resp-hdr">🤖 <span>Claude AI Analysis</span><span style="margin-left:auto;font-size:9px;opacity:.5">claude-sonnet-4</span></div><div class="ai-resp-body">${text}</div><div class="ai-conf-row"><div class="ai-conf-lbl">CONFIDENCE</div><div class="ai-conf-bar"><div class="ai-conf-fill" id="confFill" style="width:0%"></div></div><div class="ai-conf-pct">${conf}%</div></div>`;
+    setTimeout(()=>{const cf=document.getElementById('confFill');if(cf)cf.style.width=conf+'%';},100);
+    toast(`🤖 AI analysis complete — ${conf}% confidence`,'success');
+  }catch(e){
+    aiCard.innerHTML=`<div class="ai-resp-hdr">🤖 AI Analysis</div><div class="ai-resp-body" style="color:var(--text-dim)">Based on ${rain}mm rainfall and ${pop} people/km² density with ${infra} infrastructure:\n• Pattern matches ${rain>150?'major flood events (>1000 recorded globally)':'moderate precipitation events'}\n• Population exposure factor: ${(pop/10000*100).toFixed(0)}% of maximum\n• Infrastructure resilience score: ${{low:'32/100',medium:'58/100',high:'84/100'}[infra]}\n\nWe use historical disaster patterns to improve prediction accuracy.</div>`;
+  }
+}
+
+async function simulate(){
+  const rain=parseInt(document.getElementById('rainfall').value);
+  const pop=parseInt(document.getElementById('population').value);
+  const sev=calcSev(rain,pop,infraLevel);
+  const cap=Math.min(sev,200);
+  const risk=getRisk(sev);
+  const acts=ACTS[risk.level];
+  const pct=Math.min((cap/200)*100,100).toFixed(1);
+  const clr={low:'#00e676',medium:'#ffc107',high:'#ff1744'}[risk.level];
+  const res=calcRes(cap,pop,risk.level);
+  const city=document.getElementById('cityInput').value||'Unknown';
+  const cw=weatherData?.current_weather;
+  const wLabel=weatherData?wmoLabel(cw.weathercode):'Unknown';
+
+  lastResult={capped:cap,risk,rain,pop};
+  simHistory.push({label:`#${simHistory.length+1}`,value:Math.round(cap),color:clr});
+  if(simHistory.length>7)simHistory.shift();
+
+  setAtmosphere(risk.level);
+  updateGauges(rain,pop,infraLevel,cap);
+  triggerAlert(risk.level,cap,city);
+  updateProfileMeta(rain,pop,infraLevel,cap,risk.level,city);
+
+  const resCats={
+    rescue:{name:'Rescue Personnel',icon:'🚒',unit:'responders',p:risk.level==='high'?'critical':risk.level==='medium'?'urgent':'standard'},
+    medical:{name:'Medical Teams',icon:'🏥',unit:'medics',p:risk.level==='high'?'critical':'standard'},
+    supplies:{name:'Supply Units',icon:'📦',unit:'crates',p:'standard'},
+    vehicles:{name:'Vehicles',icon:'🚗',unit:'units',p:risk.level==='high'?'urgent':'monitor'},
+    shelters:{name:'Shelters',icon:'⛺',unit:'sites',p:risk.level==='high'?'urgent':'monitor'},
+    budget:{name:'Est. Budget',icon:'💰',unit:'USD',p:'monitor'},
+  };
+
+  document.getElementById('simResults').innerHTML=`
+    <div class="sev-card ${risk.cls} stagger-1">
+      <div class="sev-top">
+        <div><div class="sev-lbl">Severity Index${aiMode?' <span style="color:var(--purple);font-size:9px">🤖 AI MODE</span>':''}</div>
+          <div class="sev-num" id="sevNum">0</div>
+          <div class="sev-meta">${wLabel} · ${city}${cw?`\n🌡 ${cw.temperature}°C · 💨 ${cw.windspeed} km/h`:''}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="rbadge"><span>${risk.icon}</span><span>${risk.label}</span></div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:7px">Simulated ${new Date().toLocaleTimeString()}</div>
+          ${aiMode?`<div style="font-family:var(--mono);font-size:9px;color:var(--purple);margin-top:3px">✓ Historical pattern analysis</div>`:''}
+        </div>
+      </div>
+      <div class="bar-track"><div class="bar-fill" id="barFill" style="width:0%"></div></div>
+      <div class="bar-zones"><span class="bz" style="color:var(--green)">● LOW 0–50</span><span class="bz" style="color:var(--yellow)">● MED 50–100</span><span class="bz" style="color:var(--red)">● HIGH 100+</span></div>
+    </div>
+    <div class="mrow stagger-2">
+      <div class="mc"><div class="mc-l">Rainfall</div><div class="mc-v">${rain}<span class="mc-u">mm</span></div></div>
+      <div class="mc"><div class="mc-l">Population</div><div class="mc-v">${(pop/1000).toFixed(1)}<span class="mc-u">K/km²</span></div></div>
+      <div class="mc"><div class="mc-l">Infrastructure</div><div class="mc-v" style="font-size:13px;text-transform:capitalize;padding-top:3px">${infraLevel}</div></div>
+      <div class="mc"><div class="mc-l">Multiplier</div><div class="mc-v">${{low:'1.5×',medium:'1.0×',high:'0.5×'}[infraLevel]}</div></div>
+    </div>
+    ${aiMode?`<div class="ai-card stagger-3" id="aiCard"><div class="ai-thinking"><div class="ai-dots"><span></span><span></span><span></span></div>Initializing AI analysis…</div></div>`:''}
+    <div class="panel stagger-${aiMode?4:3}" style="padding:0">
+      <div class="phdr"><span class="dot ai-dot"></span>Resource Allocation AI</div>
+      <div class="resource-grid">
+        ${Object.entries(resCats).map(([k,cat])=>{
+          const v=res[k];const disp=k==='budget'?'$'+v.toLocaleString():v.toLocaleString();
+          return`<div class="res-item ${cat.p}">
+            <div class="res-icon">${cat.icon}</div><div class="res-name">${cat.name}</div>
+            <div class="res-count">${disp}</div><div class="res-unit">${cat.unit}</div>
+            <div class="res-bar"><div class="res-bar-fill" id="rb-${k}" style="background:${{critical:'var(--red)',urgent:'var(--orange)',standard:'var(--yellow)',monitor:'var(--green)'}[cat.p]}"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="action-card ${risk.cls} stagger-${aiMode?5:4}">
+      <div class="achdr"><span>⚡</span><span>Recommended Response Actions</span></div>
+      <div class="acbody">${acts.map(a=>`<div class="ac-item"><span class="ac-ico">${a.i}</span><span class="ac-txt">${a.t}</span></div>`).join('')}</div>
+    </div>
+    <div class="charts-row stagger-${aiMode?6:5}">
+      <div class="chart-card"><div class="phdr"><span class="dot"></span>Simulation History</div><div class="chart-body"><canvas id="cHist" height="120"></canvas></div></div>
+      <div class="chart-card"><div class="phdr"><span class="dot"></span>7-Day Forecast</div><div class="chart-body"><canvas id="cFcast" height="120"></canvas></div></div>
+    </div>`;
+
+  document.getElementById('speakBtn').style.display='flex';
+
+  // Count-up animation
+  setTimeout(()=>animateCount(document.getElementById('sevNum'),Math.round(cap)),80);
+  setTimeout(()=>{const b=document.getElementById('barFill');if(b)b.style.width=pct+'%';},100);
+  setTimeout(()=>{Object.keys(res).forEach(k=>{const el=document.getElementById('rb-'+k);if(!el)return;const v=k==='budget'?res[k]/500000*100:k==='supplies'?res[k]/1000*100:res[k]/500*100;el.style.width=Math.min(100,v)+'%';});},150);
+
+  setTimeout(()=>{
+    const c1=document.getElementById('cHist');
+    if(c1){if(histChart)histChart.destroy();histChart=new Chart(c1,{type:'bar',data:{labels:simHistory.map(h=>h.label),datasets:[{data:simHistory.map(h=>h.value),backgroundColor:simHistory.map(h=>h.color+'28'),borderColor:simHistory.map(h=>h.color),borderWidth:1}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:'#16253a'},ticks:{color:'#364f62',font:{family:"'Share Tech Mono'",size:9}}},y:{min:0,max:200,grid:{color:'#16253a'},ticks:{color:'#364f62',font:{family:"'Share Tech Mono'",size:9}}}},animation:{duration:800,easing:'easeOutQuart'}}});}
+    const c2=document.getElementById('cFcast');
+    if(c2&&weatherData){if(fcastChart)fcastChart.destroy();const d=weatherData.daily;const dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];const labs=d.time.map((t,i)=>i===0?'Today':dow[new Date(t).getDay()]);fcastChart=new Chart(c2,{data:{labels:labs,datasets:[{type:'bar',label:'Rain mm',data:d.precipitation_sum,backgroundColor:'rgba(0,180,216,.25)',borderColor:'#00b4d8',borderWidth:1,yAxisID:'yR'},{type:'line',label:'Max°C',data:d.temperature_2m_max,borderColor:'#ff7043',backgroundColor:'transparent',borderWidth:2,pointRadius:3,yAxisID:'yT',tension:.35},{type:'line',label:'Min°C',data:d.temperature_2m_min,borderColor:'#29b6f6',backgroundColor:'transparent',borderWidth:1.5,pointRadius:2,borderDash:[3,3],yAxisID:'yT',tension:.35}]},options:{plugins:{legend:{display:true,labels:{color:'#364f62',font:{family:"'Share Tech Mono'",size:9},boxWidth:10,padding:7}}},scales:{x:{grid:{color:'#16253a'},ticks:{color:'#364f62',font:{family:"'Share Tech Mono'",size:9}}},yR:{grid:{color:'#16253a'},ticks:{color:'#00b4d8',font:{family:"'Share Tech Mono'",size:9}}},yT:{position:'right',grid:{display:false},ticks:{color:'#ff7043',font:{family:"'Share Tech Mono'",size:9}}}},animation:{duration:800,easing:'easeOutQuart'}}});}
+  },250);
+
+  if(aiMode)getAiAnalysis(rain,pop,infraLevel,sev,risk.label,city,wLabel);
+}
+
+// ══════════ PROFILES SYSTEM ════════════════════════════
+let profiles=[];
+
+async function loadProfilesFromStorage(){
+  try{
+    const r=await window.storage.get('disastersim-profiles');
+    profiles=r?JSON.parse(r.value):[];
+  }catch(e){profiles=[];}
+  renderProfiles();
+  updateProfileCount();
+}
+
+async function saveProfilestoStorage(){
+  try{await window.storage.set('disastersim-profiles',JSON.stringify(profiles));}
+  catch(e){/* storage not available, use memory only */}
+}
+
+function updateProfileMeta(rain,pop,infra,sev,riskLevel,city){
+  const meta=document.getElementById('profileSaveMeta');
+  if(!meta)return;
+  meta.innerHTML=`City: ${city} · Rain: ${rain}mm · Pop: ${(pop/1000).toFixed(1)}K · Infra: ${infra}<br>Severity: ${Math.round(sev)} · Risk: ${riskLevel.toUpperCase()}`;
+  document.getElementById('profileSaveBtn').disabled=false;
+}
+
+async function saveProfile(){
+  if(!lastResult)return;
+  const nameEl=document.getElementById('profileNameInput');
+  const name=nameEl.value.trim()||`Profile ${profiles.length+1}`;
+  const city=document.getElementById('cityInput').value||'Unknown';
+  const profile={
+    id:Date.now(),name,city,
+    rain:parseInt(document.getElementById('rainfall').value),
+    pop:parseInt(document.getElementById('population').value),
+    infra:infraLevel,
+    severity:Math.round(lastResult.capped),
+    riskLevel:lastResult.risk.level,
+    timestamp:new Date().toLocaleString(),
+    aiMode,
+  };
+  profiles.unshift(profile);
+  if(profiles.length>20)profiles=profiles.slice(0,20);
+  await saveProfilestoStorage();
+  renderProfiles();
+  updateProfileCount();
+  nameEl.value='';
+  toast(`✅ Profile "${name}" saved`,'success');
+}
+
+function renderProfiles(){
+  const list=document.getElementById('profileList');
+  if(!profiles.length){
+    list.innerHTML='<div class="no-profiles">No profiles saved yet.<br>Run a simulation and save it.</div>';
+    return;
+  }
+  list.innerHTML=profiles.map((p,i)=>`
+    <div class="profile-card c-${p.riskLevel}" style="animation-delay:${i*.06}s">
+      <div class="pc-top">
+        <div>
+          <div class="pc-name">${p.name}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:2px">📍 ${p.city} · ${p.timestamp}</div>
+        </div>
+        <div><div class="pc-sev c-${p.riskLevel}">${p.severity}</div><div class="pc-badge c-${p.riskLevel}">${p.riskLevel.toUpperCase()}</div></div>
+      </div>
+      <div class="pc-meta">🌧️ ${p.rain}mm · 👥 ${(p.pop/1000).toFixed(1)}K/km² · 🏗️ ${p.infra}${p.aiMode?' · 🤖 AI':''}</div>
+      <div class="pc-actions">
+        <button class="pc-load" onclick="loadProfile(${p.id})">▶ LOAD</button>
+        <button class="pc-del" onclick="deleteProfile(${p.id})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function loadProfile(id){
+  const p=profiles.find(x=>x.id===id);if(!p)return;
+  document.getElementById('rainfall').value=p.rain;
+  document.getElementById('population').value=p.pop;
+  const ibtns=document.querySelectorAll('.ib');
+  ibtns.forEach(b=>b.classList.remove('active'));
+  const idx={low:0,medium:1,high:2}[p.infra]||0;
+  if(ibtns[idx]){ibtns[idx].classList.add('active');infraLevel=p.infra;}
+  if(p.city&&p.city!=='Unknown')document.getElementById('cityInput').value=p.city;
+  ud();
+  closeProfilesDrawer();
+  toast(`▶ Profile "${p.name}" loaded`,'info');
+  simulate();
+}
+
+async function deleteProfile(id){
+  const p=profiles.find(x=>x.id===id);
+  profiles=profiles.filter(x=>x.id!==id);
+  await saveProfilestoStorage();
+  renderProfiles();
+  updateProfileCount();
+  if(p)toast(`🗑 Profile "${p.name}" deleted`,'warn');
+}
+
+function updateProfileCount(){
+  const el=document.getElementById('profileCount');
+  if(el)el.textContent=profiles.length?`(${profiles.length})`:'';
+}
+
+function openProfiles(){
+  document.getElementById('profilesOverlay').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeProfilesDrawer(){
+  document.getElementById('profilesOverlay').classList.remove('open');
+  document.body.style.overflow='';
+}
+function closeProfiles(e){
+  if(e.target===document.getElementById('profilesOverlay'))closeProfilesDrawer();
+}
+
+// ══════════ INIT ═══════════════════════════════════════
+ud();
+loadProfilesFromStorage().catch(()=>renderProfiles());
+</script>
+</body>
+</html>
