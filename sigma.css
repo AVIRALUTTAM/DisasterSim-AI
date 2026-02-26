@@ -1,0 +1,138 @@
+/* ===== GLOBAL RESET ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ===== ROOT DESIGN SYSTEM ===== */
+:root {
+  --bg: #0F172A;
+  --card: #1E293B;
+  --input: #334155;
+  --border: #16253a;
+
+  --text: #a8bfce;
+  --text-light: #d5eaff;
+
+  --green: #22C55E;
+  --yellow: #EAB308;
+  --red: #DC2626;
+
+  --accent: #00b4d8;
+}
+
+/* ===== BODY ===== */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+}
+
+/* ===== CONTAINER ===== */
+.container {
+  max-width: 1200px;
+  margin: auto;
+  padding: 20px;
+}
+
+/* ===== HEADER ===== */
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.header h1 {
+  font-size: 32px;
+  color: var(--text-light);
+}
+
+/* ===== GRID ===== */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+}
+
+/* ===== CARD ===== */
+.card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0px 10px 20px rgba(0,0,0,0.3);
+}
+
+/* ===== INPUT ===== */
+.input {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  background: var(--input);
+  border: none;
+  color: white;
+  border-radius: 8px;
+}
+
+/* ===== BUTTON ===== */
+.btn {
+  margin-top: 15px;
+  width: 100%;
+  padding: 12px;
+  background: var(--green);
+  border: none;
+  color: white;
+  font-weight: bold;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn:hover {
+  opacity: 0.8;
+}
+
+/* ===== RESULT ===== */
+.result {
+  margin-top: 20px;
+  font-size: 18px;
+}
+
+/* ===== BADGES ===== */
+.badge {
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+.low { background: var(--green); }
+.medium { background: var(--yellow); }
+.high { background: var(--red); }
+
+/* ===== PROGRESS BAR ===== */
+.progress {
+  height: 8px;
+  background: #111;
+  border-radius: 5px;
+  margin-top: 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 5px;
+  transition: 0.5s;
+}
+
+/* ===== RESOURCE BOX ===== */
+.resources {
+  margin-top: 20px;
+}
+
+.resource-item {
+  background: #0c1520;
+  padding: 10px;
+  margin-top: 10px;
+  border-left: 4px solid var(--accent);
+}
